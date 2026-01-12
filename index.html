@@ -13,7 +13,6 @@
             --beat-color: #ff99cc; --beat-guide: #ff4444;
         }
         
-        /* 基本設定 */
         body { 
             background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; 
             touch-action: manipulation; 
@@ -23,7 +22,6 @@
             display: flex; gap: 5px; padding: 10px; background: var(--panel-bg); 
             min-height: 75px; flex-wrap: wrap; box-sizing: border-box; align-items: center;
         }
-        /* ボタンのアニメーション用トランジション */
         button { 
             flex: 1; min-width: 70px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 8px 2px; height: 40px; 
             transition: transform 0.05s ease;
@@ -38,7 +36,6 @@
 
         .main-container { display: flex; flex-direction: column; height: calc(100vh - 85px); padding: 10px; box-sizing: border-box; gap: 10px; }
         
-        /* グラフエリアはロック */
         .canvas-wrapper { 
             flex: 1; background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; 
             display: flex; flex-direction: column; position: relative; 
@@ -165,6 +162,7 @@
     let beatFreq1 = 440, beatFreq2 = 442;
     let isDevPanelOpen = false;
     let sourceSignalBuffer = null;
+    let inputGainNode = null; // マイク入力増幅用
 
     function toggleSettings() {
         const p = document.getElementById('settingsPanel');
@@ -232,9 +230,16 @@
             sourceSignalBuffer = new Uint8Array(audioCtx.sampleRate * 1.0);
             
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                // ★修正: マイク設定を標準に戻す (autoGainControlなどを端末任せにする)
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const source = audioCtx.createMediaStreamSource(stream);
-                source.connect(analyser);
+                
+                // ★追加: デジタル増幅 (GainNode) を挟む。デフォルトで3倍に増幅
+                inputGainNode = audioCtx.createGain();
+                inputGainNode.gain.value = 3.0; 
+                source.connect(inputGainNode);
+                inputGainNode.connect(analyser);
+
                 document.getElementById('startBtn').innerText = "実行中"; document.getElementById('startBtn').style.background = "#28a745"; 
             } catch (err) {
                 alert("マイクが使えません。テスト音モードで起動します。"); 
@@ -533,7 +538,6 @@
         document.getElementById('devPlayBtn').innerText = "再生";
     }
     
-    // ★スマホ対応: 全てのボタンに対して、タッチした瞬間にクリックを発火させる
     document.querySelectorAll('button').forEach(btn => {
         btn.addEventListener('touchstart', (e) => {
             e.preventDefault(); 
