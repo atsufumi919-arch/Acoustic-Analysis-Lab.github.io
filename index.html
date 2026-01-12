@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>物理基礎：音響解析室</title>
+    <style>
+        :root {
+            --bg-color: #050505; --panel-bg: #222;
+            --os-color: #00ffcc; --sp-color: #ffcc00; 
+            --analysis-color: #00ffff; --text-highlight: #ffff00;
+            --beat-color: #ff99cc; --beat-guide: #ff4444;
+        }
+        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; }
+        
+        .controls { 
+            display: flex; gap: 5px; padding: 10px; background: var(--panel-bg); 
+            min-height: 75px; flex-wrap: wrap; box-sizing: border-box; align-items: center;
+        }
+        button { flex: 1; min-width: 70px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 8px 2px; height: 40px; }
+        #startBtn { background: #28a745; flex: 1.5; }
+        #layoutBtn { background: #6c757d; }
+        #modeBtn { background: #007bff; }
+        #vScaleBtn { background: #fd7e14; }
+        #beatBtn { background: #6f42c1; }
+        #freezeBtn { background: #dc3545; }
+        #settingsBtn { flex: 0.5; background: #555; font-size: 18px; min-width: 40px; }
+
+        .main-container { display: flex; flex-direction: column; height: calc(100vh - 85px); padding: 10px; box-sizing: border-box; gap: 10px; }
+        
+        .canvas-wrapper { flex: 1; background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+        .graph-header {
+            padding: 5px 10px; font-size: 12px; font-weight: bold;
+            background: rgba(30, 30, 30, 1); border-bottom: 1px solid #444;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .header-indicator { display: inline-block; width: 6px; height: 12px; margin-right: 8px; border-radius: 2px; }
+        
+        canvas { flex: 1; width: 100%; display: block; }
+        
+        #settingsPanel {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 100000; justify-content: center; align-items: center;
+        }
+        .settings-content {
+            background: #333; padding: 20px; border-radius: 12px; border: 2px solid #00ffff; width: 300px;
+        }
+        .settings-content h3 { margin-top: 0; color: #00ffff; text-align: center; }
+        .setting-item { margin: 15px 0; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .setting-item input[type="checkbox"] { transform: scale(1.5); }
+        .close-settings { width: 100%; background: #555; margin-top: 10px; }
+
+        #devPanel { 
+            display: none; 
+            position: fixed; bottom: 20px; right: 20px; width: 180px; 
+            background: rgba(51, 51, 51, 0.95); border: 2px solid #00ffff;
+            border-radius: 12px; padding: 10px; z-index: 99999; 
+            flex-direction: column; gap: 8px; 
+        }
+        .dev-control { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: #ccc; }
+        .dev-val { color: #ffff00; font-weight: bold; float: right; }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <button id="startBtn">①開始</button>
+    <button id="layoutBtn">表示切替</button>
+    <button id="modeBtn">波形/周波</button>
+    <button id="vScaleBtn">縦軸: 固定</button>
+    <button id="beatBtn">うなり: OFF</button>
+    <button id="freezeBtn">一時停止</button>
+    <button id="settingsBtn">⚙️</button>
+</div>
+
+<div id="settingsPanel">
+    <div class="settings-content">
+        <h3>解析表示設定</h3>
+        <div class="setting-item">
+            <label>1. 数値を表示<br><span style="font-size:10px; color:#aaa;">(通常:T,f / うなり:Tb,fb)</span></label>
+            <input type="checkbox" id="checkVal">
+        </div>
+        <div class="setting-item">
+            <label>2. 周期エリアを表示<br><span style="font-size:10px; color:#aaa;">(1周期分を強調)</span></label>
+            <input type="checkbox" id="checkArea">
+        </div>
+        <div class="setting-item">
+            <label>3. ガイドラインを表示<br><span style="font-size:10px; color:#aaa;">(通常:倍音 / うなり:ピーク)</span></label>
+            <input type="checkbox" id="checkLines">
+        </div>
+        <div class="setting-item">
+            <label>4. トリガー同期 (停止表示)<br><span style="font-size:10px; color:#aaa;">(OFFでライブ感のある表示)</span></label>
+            <input type="checkbox" id="checkTrigger">
+        </div>
+        <hr style="border: 1px solid #555;">
+        <div class="setting-item" style="color:#aaa;"><label>5. テスト音パネルを表示</label><input type="checkbox" id="checkDev"></div>
+        <hr style="border: 1px solid #555;">
+        <button class="close-settings" onclick="toggleSettings()">閉じる</button>
+    </div>
+</div>
+
+<div class="main-container">
+    <div class="canvas-wrapper" id="wrapperTime">
+        <div class="graph-header">
+            <div><span class="header-indicator" style="background: var(--os-color);" id="timeIndicator"></span><span id="timeTitle">波形 (時間軸)</span></div>
+        </div>
+        <canvas id="timeCanvas"></canvas>
+    </div>
+    <div class="canvas-wrapper" id="wrapperFreq">
+        <div class="graph-header">
+            <div><span class="header-indicator" style="background: var(--sp-color);"></span>スペクトル (周波数軸)</div>
+        </div>
+        <canvas id="freqCanvas"></canvas>
+    </div>
+</div>
+
+<div id="devPanel">
+    <div style="font-size: 11px; text-align: center; color: #00ffff; font-weight:bold;">🧪 テスト音 (うなり実験)</div>
+    <div class="dev-control">
+        <span>固定音: 440Hz</span>
+    </div>
+    <div class="dev-control">
+        <span>可変音: <span id="freqDisp" class="dev-val">442Hz</span></span>
+        <input type="range" id="beatFreq" min="440" max="445" step="0.1" value="442" oninput="updateDevFreq()">
+    </div>
+    <div style="display: flex; gap: 5px; margin-top:5px;">
+        <button onclick="devPlayBeat()" style="flex:1; height:30px; background:#444;">再生</button>
+        <button onclick="devStop()" style="height:30px; background:#822;">■ 停止</button>
+    </div>
+    <div class="dev-control" style="margin-top:5px;">
+        <span>音量: <input type="range" id="vowelVol" min="0" max="1" step="0.1" value="0.5" oninput="updateDevVol()" style="width:100%;"></span>
+    </div>
+    <div style="font-size:9px; color:#888; margin-top:5px; text-align:center;">※信号源データを直接表示(Source Monitor)</div>
+</div>
+
+<script>
+    const tCanvas = document.getElementById('timeCanvas'), fCanvas = document.getElementById('freqCanvas');
+    const tCtx = tCanvas.getContext('2d'), fCtx = fCanvas.getContext('2d');
+    let audioCtx, analyser, dataTime, dataFreq;
+    let isFrozen = false, isSplitView = false, currentMode = 'time', autoScale = false;
+    let isBeatMode = false, beatBuffer = null;
+    const BEAT_DURATION_SEC = 1.0;
+
+    // ★初期設定：triggerをfalseに変更
+    let config = { showVal: false, showArea: false, showLines: false, trigger: false };
+    let currentTScale = 1.0, currentFScale = 1.0;
+    const MARGIN_TOP = 60, MARGIN_X = 50, MARGIN_Y = 30;
+    
+    let beatFreq1 = 440, beatFreq2 = 442;
+    let isDevPanelOpen = false;
+    let sourceSignalBuffer = null;
+
+    function toggleSettings() {
+        const p = document.getElementById('settingsPanel');
+        p.style.display = (p.style.display === 'flex') ? 'none' : 'flex';
+    }
+    document.getElementById('settingsBtn').onclick = toggleSettings;
+    document.getElementById('checkVal').onchange = (e) => config.showVal = e.target.checked;
+    document.getElementById('checkArea').onchange = (e) => config.showArea = e.target.checked;
+    document.getElementById('checkLines').onchange = (e) => config.showLines = e.target.checked;
+    document.getElementById('checkTrigger').onchange = (e) => config.trigger = e.target.checked;
+    
+    document.getElementById('checkDev').onchange = (e) => {
+        isDevPanelOpen = e.target.checked;
+        document.getElementById('devPanel').style.display = isDevPanelOpen ? 'flex' : 'none';
+        if(isDevPanelOpen && !audioCtx) document.getElementById('startBtn').click();
+    };
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        [document.getElementById('wrapperTime'), document.getElementById('wrapperFreq')].forEach((w, i) => {
+            const canvas = (i===0) ? tCanvas : fCanvas;
+            const headerHeight = w.querySelector('.graph-header').offsetHeight;
+            const rect = w.getBoundingClientRect();
+            if(rect.width > 0) { canvas.width = rect.width * dpr; canvas.height = (rect.height - headerHeight) * dpr; }
+        });
+    }
+    window.addEventListener('resize', resize);
+
+    document.getElementById('layoutBtn').onclick = () => { isSplitView = !isSplitView; updateLayout(); };
+    document.getElementById('modeBtn').onclick = () => { currentMode = (currentMode === 'time') ? 'freq' : 'time'; updateLayout(); };
+    document.getElementById('vScaleBtn').onclick = () => { 
+        autoScale = !autoScale;
+        document.getElementById('vScaleBtn').innerText = autoScale ? "縦軸: 自動" : "縦軸: 固定";
+    };
+    document.getElementById('beatBtn').onclick = () => {
+        isBeatMode = !isBeatMode;
+        const btn = document.getElementById('beatBtn');
+        const title = document.getElementById('timeTitle');
+        const indicator = document.getElementById('timeIndicator');
+        if (isBeatMode) {
+            btn.innerText = "うなり: ON"; btn.style.background = "#e83e8c";
+            title.innerText = "うなり (1.0秒間)"; indicator.style.background = "var(--beat-color)";
+        } else {
+            btn.innerText = "うなり: OFF"; btn.style.background = "#6f42c1";
+            title.innerText = "波形 (時間軸)"; indicator.style.background = "var(--os-color)";
+        }
+    };
+    function updateLayout() {
+        document.getElementById('wrapperTime').style.display = (!isSplitView && currentMode !== 'time') ? 'none' : 'flex';
+        document.getElementById('wrapperFreq').style.display = (!isSplitView && currentMode !== 'freq') ? 'none' : 'flex';
+        setTimeout(resize, 50);
+    }
+    document.getElementById('freezeBtn').onclick = () => { isFrozen = !isFrozen; document.getElementById('freezeBtn').innerText = isFrozen ? "再開" : "一時停止"; };
+
+    document.getElementById('startBtn').onclick = async () => {
+        if (audioCtx) { if(audioCtx.state === 'suspended') await audioCtx.resume(); return; }
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser(); 
+            analyser.fftSize = 2048;
+            dataTime = new Uint8Array(analyser.fftSize); dataFreq = new Uint8Array(analyser.frequencyBinCount);
+            
+            beatBuffer = new Uint8Array(audioCtx.sampleRate * 2.0); 
+            sourceSignalBuffer = new Uint8Array(audioCtx.sampleRate * 1.0);
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                const source = audioCtx.createMediaStreamSource(stream);
+                source.connect(analyser);
+                document.getElementById('startBtn').innerText = "実行中"; document.getElementById('startBtn').style.background = "#28a745"; 
+            } catch (err) {
+                alert("マイクが使えません。テスト音モードで起動します。"); 
+                document.getElementById('startBtn').innerText = "テストモード";
+                document.getElementById('checkDev').checked = true;
+                document.getElementById('devPanel').style.display = 'flex';
+                isDevPanelOpen = true;
+            }
+            document.getElementById('startBtn').style.opacity = "0.8"; updateLayout(); draw();
+        } catch (e) { alert("起動エラー: " + e.message); }
+    };
+
+    function findFundamental(buf, sampleRate) {
+        let sum = 0; for (let i=0; i<buf.length; i++) { let v = (buf[i]-128)/128; sum += v*v; }
+        if (Math.sqrt(sum/buf.length) < 0.02) return -1;
+        let bestOffset = -1, bestCorr = 0;
+        for (let offset = 20; offset < 500; offset++) {
+            let corr = 0; for (let i=0; i<buf.length-offset; i++) { corr += Math.abs((buf[i]-128)-(buf[i+offset]-128)); }
+            if (bestOffset === -1 || corr < bestCorr) { bestCorr = corr; bestOffset = offset; }
+        }
+        return sampleRate / bestOffset;
+    }
+
+    function drawBase(ctx, canvas, xParams, vLabels) {
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.width, h = canvas.height;
+        const mx = MARGIN_X * dpr, my = MARGIN_Y * dpr, mt = MARGIN_TOP * dpr;
+        const graphW = w - (mx * 2), graphH = h - my - mt;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.textBaseline = "middle";
+
+        for (let val = 0; val <= xParams.max; val += xParams.step) {
+            const ratio = val / xParams.max;
+            if (ratio > 1.01) break; 
+            const x = mx + graphW * ratio;
+            ctx.strokeStyle = "#444"; ctx.lineWidth = 1 * dpr;
+            ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, mt + graphH); ctx.stroke();
+            ctx.fillStyle = "#aaa"; ctx.font = `bold ${11 * dpr}px sans-serif`;
+            ctx.textAlign = (val === 0) ? "left" : (Math.abs(ratio - 1) < 0.01) ? "right" : "center";
+            ctx.fillText(val + xParams.unit, x, mt + graphH + (15 * dpr));
+            if (val + xParams.step <= xParams.max + xParams.subStep) {
+                for (let subVal = val + xParams.subStep; subVal < val + xParams.step; subVal += xParams.subStep) {
+                    const subRatio = subVal / xParams.max; if (subRatio > 1) break;
+                    const subX = mx + graphW * subRatio;
+                    ctx.strokeStyle = "#222"; ctx.lineWidth = 1 * dpr; 
+                    ctx.beginPath(); ctx.moveTo(subX, mt); ctx.lineTo(subX, mt + graphH); ctx.stroke();
+                }
+            }
+        }
+        ctx.textAlign = "right"; ctx.fillStyle = "#aaa";
+        vLabels.forEach(l => {
+            const y = mt + graphH * (1 - l.val);
+            ctx.beginPath(); ctx.strokeStyle = "#444"; ctx.moveTo(mx - 5, y); ctx.lineTo(mx, y); ctx.stroke();
+            ctx.fillText(l.text, mx - 8, y);
+        });
+        const centerY = mt + graphH / 2;
+        ctx.beginPath(); ctx.strokeStyle = "#666"; ctx.setLineDash([2, 4]); 
+        ctx.moveTo(mx, centerY); ctx.lineTo(mx + graphW, centerY); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = "#666"; ctx.lineWidth = 1 * dpr; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.rect(mx, mt, graphW, graphH); ctx.stroke();
+        return { mx, mt, graphW, graphH };
+    }
+
+    function generateSourceSignal() {
+        if (!sourceSignalBuffer || !audioCtx) return;
+        const sr = audioCtx.sampleRate;
+        const now = audioCtx.currentTime; 
+        for (let i = 0; i < sourceSignalBuffer.length; i++) {
+            const t = config.trigger ? (i / sr) : (now + i / sr);
+            const val = 0.5 * Math.sin(2 * Math.PI * beatFreq1 * t) + 
+                        0.5 * Math.sin(2 * Math.PI * beatFreq2 * t);
+            sourceSignalBuffer[i] = 128 + val * 120; 
+        }
+    }
+
+    function draw() {
+        requestAnimationFrame(draw);
+        if (!analyser) return;
+        if (!isFrozen) { 
+            analyser.getByteTimeDomainData(dataTime); analyser.getByteFrequencyData(dataFreq); 
+            if (beatBuffer) { 
+                beatBuffer.set(beatBuffer.subarray(dataTime.length)); 
+                beatBuffer.set(dataTime, beatBuffer.length - dataTime.length); 
+            }
+            if (isBeatMode && isDevPanelOpen) {
+                generateSourceSignal();
+            }
+        }
+        
+        const dpr = window.devicePixelRatio || 1;
+        const fundamental = findFundamental(dataTime, audioCtx.sampleRate);
+
+        if (getComputedStyle(document.getElementById('wrapperTime')).display !== 'none') {
+            
+            const isSourceMode = (isBeatMode && isDevPanelOpen);
+            const displayData = isSourceMode ? sourceSignalBuffer : (isBeatMode ? beatBuffer : dataTime);
+            
+            const msTotal = isBeatMode ? 1000 : (dataTime.length / audioCtx.sampleRate) * 1000;
+            const xSettings = isBeatMode ? { max: 1000, step: 100, subStep: 10, unit: "ms" } : { max: msTotal, step: 5, subStep: 1, unit: "ms" }; 
+            const vLabels = autoScale ? [{val:0, text:"-REL"}, {val:0.5, text:"0"}, {val:1.0, text:"+REL"}] : [{val:0, text:"-1.0"}, {val:0.5, text:"0"}, {val:1.0, text:"+1.0"}];
+            const { mx, mt, graphW, graphH } = drawBase(tCtx, tCanvas, xSettings, vLabels);
+            
+            // データ読み出し位置決定
+            let startIndex = 0;
+            if (isBeatMode && !isSourceMode) {
+                let baseIndex = beatBuffer.length - (audioCtx.sampleRate * 1.0);
+                if (baseIndex < 0) baseIndex = 0;
+                startIndex = baseIndex;
+
+                // トリガーON時のみ、ピーク位置を検索してstartIndexをズラす
+                if (config.trigger) {
+                    const searchStart = Math.floor(beatBuffer.length * 0.25);
+                    let maxAmp = 0;
+                    let peakIdx = baseIndex;
+                    for(let i = searchStart; i < beatBuffer.length; i += 20) {
+                        let amp = Math.abs(beatBuffer[i] - 128);
+                        if (amp > maxAmp) { maxAmp = amp; peakIdx = i; }
+                    }
+                    startIndex = peakIdx;
+                    if (startIndex + (audioCtx.sampleRate * 1.0) > beatBuffer.length) {
+                        startIndex = beatBuffer.length - (audioCtx.sampleRate * 1.0);
+                    }
+                }
+            }
+
+            let targetScale = 1.0;
+            if (autoScale) {
+                let maxPeak = 0; const step = isBeatMode ? 10 : 1; 
+                const len = isSourceMode ? sourceSignalBuffer.length : (audioCtx.sampleRate * 1.0);
+                const offset = isSourceMode ? 0 : startIndex;
+                for(let i=0; i<len; i+=step) { 
+                    if (displayData[offset + i] === undefined) break;
+                    let p = Math.abs(displayData[offset + i] - 128); 
+                    if(p > maxPeak) maxPeak = p; 
+                }
+                if(maxPeak > 1) targetScale = 115 / maxPeak;
+            }
+            currentTScale = currentTScale * 0.9 + targetScale * 0.1;
+
+            if (autoScale) {
+                tCtx.fillStyle = "#fd7e14"; tCtx.textAlign = "right"; tCtx.font = `${12 * dpr}px sans-serif`;
+                tCtx.fillText(`Scale: ×${currentTScale.toFixed(1)}`, tCanvas.width - 10, mt - 10*dpr);
+            }
+
+            tCtx.lineWidth = (isBeatMode ? 1 : 2) * dpr; 
+            tCtx.strokeStyle = isFrozen ? "#ff4444" : (isBeatMode ? "var(--beat-color)" : "var(--os-color)");
+            tCtx.beginPath();
+
+            if (isBeatMode) {
+                // うなり描画
+                const samplesToDraw = audioCtx.sampleRate * 1.0; 
+                const samplesPerPixel = samplesToDraw / graphW;
+                tCtx.fillStyle = "var(--beat-color)"; 
+                
+                const dataOffset = isSourceMode ? 0 : startIndex;
+
+                for (let x = 0; x < graphW; x++) {
+                    const start = Math.floor(dataOffset + x * samplesPerPixel);
+                    const end = Math.floor(dataOffset + (x + 1) * samplesPerPixel);
+                    let minVal = 255, maxVal = 0;
+                    for (let j = start; j < end && j < displayData.length; j++) {
+                        if (displayData[j] < minVal) minVal = displayData[j];
+                        if (displayData[j] > maxVal) maxVal = displayData[j];
+                    }
+                    const yTop = mt + (graphH / 2) - ((maxVal - 128)/128 * currentTScale * (graphH / 2));
+                    const yBottom = mt + (graphH / 2) - ((minVal - 128)/128 * currentTScale * (graphH / 2));
+                    let h = yBottom - yTop; if (h < 1) h = 1;
+                    tCtx.fillRect(mx + x, yTop, 1, h);
+                }
+
+                // うなりガイド (トリガーの有無に関わらず、画面上のピークに合わせて表示)
+                const fBeat = Math.abs(beatFreq1 - beatFreq2);
+                const tBeat = (fBeat > 0.1) ? (1 / fBeat) * 1000 : 0; 
+
+                if (fBeat > 0.1) {
+                    // ★ピーク位置決定：画面内のデータから常に探す (これで動く波にも追従する)
+                    let peakTimeMs = 0;
+                    
+                    // 実測モードまたはトリガーOFF時は、画面上のデータからピークを探す
+                    let maxAmp = 0, peakIdx = 0;
+                    // SourceModeならバッファ全体、マイクモードなら表示分(1秒)
+                    const len = (isSourceMode) ? sourceSignalBuffer.length : (audioCtx.sampleRate * 1.0);
+                    const offset = (isSourceMode) ? 0 : startIndex;
+
+                    for(let i=0; i<len; i+=20) { // 間引き探索
+                        if (displayData[offset + i] === undefined) break;
+                        let val = Math.abs(displayData[offset + i] - 128);
+                        if(val > maxAmp) { maxAmp = val; peakIdx = i; }
+                    }
+                    peakTimeMs = (peakIdx / len) * 1000;
+
+                    if (config.showArea) {
+                        let startX = mx + (peakTimeMs / 1000) * graphW;
+                        let wPixels = (tBeat / 1000) * graphW;
+                        tCtx.fillStyle = "rgba(0, 255, 255, 0.2)";
+                        if (startX + wPixels <= mx + graphW) { tCtx.fillRect(startX, mt, wPixels, graphH); } 
+                        else { startX -= wPixels; if (startX >= mx) tCtx.fillRect(startX, mt, wPixels, graphH); }
+                    }
+
+                    if (config.showLines) {
+                        tCtx.strokeStyle = "var(--beat-guide)"; tCtx.lineWidth = 1 * dpr;
+                        tCtx.setLineDash([5, 5]); tCtx.beginPath();
+                        for (let t = peakTimeMs; t <= 1000; t += tBeat) {
+                            const x = mx + (t / 1000) * graphW; if (x >= mx && x <= mx + graphW) { tCtx.moveTo(x, mt); tCtx.lineTo(x, mt + graphH); }
+                        }
+                        for (let t = peakTimeMs - tBeat; t >= 0; t -= tBeat) {
+                            const x = mx + (t / 1000) * graphW; if (x >= mx && x <= mx + graphW) { tCtx.moveTo(x, mt); tCtx.lineTo(x, mt + graphH); }
+                        }
+                        tCtx.stroke(); tCtx.setLineDash([]);
+                    }
+                    if (config.showVal) {
+                        tCtx.fillStyle = "#ffff00"; tCtx.textAlign = "left"; tCtx.font = `bold ${16 * dpr}px monospace`;
+                        tCtx.fillText(`T_beat=${tBeat.toFixed(0)}ms  f_beat=${fBeat.toFixed(1)}Hz`, mx, mt - 15*dpr);
+                    }
+                }
+
+            } else {
+                // 通常モード描画
+                tCtx.lineWidth = 2 * dpr; tCtx.strokeStyle = isFrozen ? "#ff4444" : "var(--os-color)";
+                let triggerOffset = 0; 
+                for (let i=1; i<dataTime.length/2; i++) { if(dataTime[i-1] < 128 && dataTime[i] >= 128) { triggerOffset = i; break; } }
+                const slice = graphW / (dataTime.length - triggerOffset);
+                for (let i = 0; i < dataTime.length - triggerOffset; i++) {
+                    const x = mx + (i * slice); if (x > mx + graphW) break;
+                    let norm = (dataTime[i + triggerOffset] - 128) / 128;
+                    let y = mt + (graphH / 2) - (norm * currentTScale * (graphH / 2));
+                    y = Math.max(mt, Math.min(mt + graphH, y)); 
+                    if (i === 0) tCtx.moveTo(x, y); else tCtx.lineTo(x, y);
+                }
+                tCtx.stroke(); 
+
+                if (fundamental > 0) {
+                    if (config.showArea) {
+                        const periodPixels = (audioCtx.sampleRate / fundamental / (dataTime.length - triggerOffset)) * graphW;
+                        tCtx.fillStyle = "rgba(0, 255, 255, 0.2)"; tCtx.fillRect(mx, mt, periodPixels, graphH);
+                    }
+                    if (config.showVal) {
+                        tCtx.fillStyle = "#ffff00"; tCtx.textAlign = "left"; tCtx.font = `bold ${16 * dpr}px monospace`;
+                        tCtx.fillText(`T=${(1000/fundamental).toFixed(2)}ms  f=${Math.round(fundamental)}Hz`, mx, mt - 15*dpr);
+                    }
+                }
+            }
+        }
+
+        if (getComputedStyle(document.getElementById('wrapperFreq')).display !== 'none') {
+            const displayMaxHz = 5000;
+            const indexRange = Math.floor((displayMaxHz / (audioCtx.sampleRate/2)) * dataFreq.length);
+            const vLabels = autoScale ? [{val:0, text:"0%"}, {val:0.5, text:"50%"}, {val:1.0, text:"100%"}] : [{val:0, text:"0"}, {val:0.5, text:"0.5"}, {val:1.0, text:"1.0"}];
+            const xSettings = { max: displayMaxHz, step: 500, subStep: 100, unit: "Hz" };
+            const { mx, mt, graphW, graphH } = drawBase(fCtx, fCanvas, xSettings, vLabels);
+            let targetFScale = 1.0;
+            if (autoScale) {
+                let maxF = 0; for(let i=0; i<indexRange; i++) { if(dataFreq[i] > maxF) maxF = dataFreq[i]; }
+                if(maxF > 1) targetFScale = 245 / maxF;
+            }
+            currentFScale = currentFScale * 0.9 + targetFScale * 0.1;
+            if (autoScale) { fCtx.fillStyle = "#fd7e14"; fCtx.textAlign = "right"; fCtx.font = `${12 * dpr}px sans-serif`; fCtx.fillText(`Scale: ×${currentFScale.toFixed(1)}`, fCanvas.width - 10, mt - 10*dpr); }
+            const barWidth = graphW / indexRange;
+            for (let i = 0; i < indexRange; i++) {
+                let val = (dataFreq[i] / 255) * graphH * currentFScale;
+                if (val > graphH) val = graphH;
+                fCtx.fillStyle = isFrozen ? "#ff4444" : `hsl(${(i/indexRange)*120}, 100%, 50%)`;
+                fCtx.fillRect(mx + (i * barWidth), mt + graphH - val, barWidth, val);
+            }
+            if (fundamental > 0 && !isBeatMode && config.showLines) {
+                for (let n = 1; n <= 5; n++) {
+                    const f = fundamental * n; const x = mx + (f / displayMaxHz) * graphW;
+                    if (x < mx + graphW) {
+                        fCtx.strokeStyle = "#00ffff"; fCtx.lineWidth = (n===1)? 2*dpr : 1*dpr;
+                        fCtx.beginPath(); fCtx.moveTo(x, mt); fCtx.lineTo(x, mt + graphH); fCtx.stroke();
+                        fCtx.fillStyle = "#00ffff"; fCtx.textAlign = "center"; fCtx.font = `bold ${11 * dpr}px sans-serif`;
+                        const yOffset = (n % 2 !== 0) ? 25 * dpr : 10 * dpr;
+                        fCtx.fillText(n===1 ? "f0" : n+"f0", x, mt - yOffset - 12*dpr);
+                        fCtx.fillStyle = "#ffff00"; fCtx.font = `${10 * dpr}px sans-serif`;
+                        fCtx.fillText(`${Math.round(f)}`, x, mt - yOffset);
+                    }
+                }
+            }
+        }
+    }
+
+    let osc1=null, osc2=null, gainNode=null;
+    function ensureAudioContext() { if (!audioCtx) { document.getElementById('startBtn').click(); return false; } return true; }
+    function updateDevVol() { if(gainNode) gainNode.gain.value = document.getElementById('vowelVol').value; }
+    function updateDevFreq() {
+        beatFreq2 = document.getElementById('beatFreq').value;
+        document.getElementById('freqDisp').innerText = beatFreq2 + "Hz";
+        if(osc2) { osc2.frequency.setValueAtTime(beatFreq2, audioCtx.currentTime); }
+    }
+    function devPlayBeat(){
+        if(!ensureAudioContext()){ setTimeout(devPlayBeat,200); return; }
+        devStop();
+        beatFreq2 = document.getElementById('beatFreq').value;
+        osc1 = audioCtx.createOscillator(); osc1.frequency.value = beatFreq1; 
+        osc2 = audioCtx.createOscillator(); osc2.frequency.value = beatFreq2;
+        gainNode = audioCtx.createGain(); gainNode.gain.value = document.getElementById('vowelVol').value;
+        osc1.connect(gainNode); osc2.connect(gainNode);
+        gainNode.connect(audioCtx.destination); gainNode.connect(analyser);
+        osc1.start(); osc2.start();
+    }
+    function devStop(){ if(osc1){ try{osc1.stop();osc2.stop();}catch(e){} osc1.disconnect();osc2.disconnect();osc1=null;osc2=null; } }
+</script>
+</body>
+</html>
