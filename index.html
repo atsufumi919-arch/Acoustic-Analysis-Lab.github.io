@@ -368,7 +368,10 @@
             tCtx.beginPath();
 
             if (isBeatMode) {
-                // 【うなりモード】多角形塗りつぶし（隙間対策済）
+                // 【うなりモード】多角形塗りつぶし（軽量化版）
+                // 1ドットごとではなく、2ドットごとに計算して点を間引く
+                const drawStep = 2; // 間引きステップ (大きくすると軽くなる)
+                
                 const samplesToDraw = audioCtx.sampleRate * 1.0; 
                 const samplesPerPixel = samplesToDraw / graphW;
                 tCtx.fillStyle = "var(--beat-color)";
@@ -377,9 +380,11 @@
                 const tops = [];
                 const bottoms = [];
 
-                for (let x = 0; x <= graphW; x++) {
+                // ループ回数を削減
+                for (let x = 0; x <= graphW; x += drawStep) {
                     const start = Math.floor(dataOffset + x * samplesPerPixel);
-                    const end = Math.floor(dataOffset + (x + 1) * samplesPerPixel);
+                    // 次のステップまでカバーするように範囲を広げる
+                    const end = Math.floor(dataOffset + (x + drawStep) * samplesPerPixel);
                     let minVal = 255, maxVal = 0;
                     
                     if (start >= displayData.length) {
