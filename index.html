@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>物理基礎：音響解析室</title>
+    <title>Physics: Acoustic Analysis Lab</title>
     <style>
         :root {
             --bg-color: #050505; --panel-bg: #222;
@@ -12,7 +12,8 @@
             --analysis-color: #00ffff; --text-highlight: #ffff00;
             --beat-color: #ff99cc; --beat-guide: #ff4444;
         }
-        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; }
+        /* touch-action: none を追加してスマホでの誤操作（ズーム等）を防止 */
+        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; touch-action: none; }
         
         .controls { 
             display: flex; gap: 5px; padding: 10px; background: var(--panel-bg); 
@@ -142,7 +143,6 @@
     let isBeatMode = false, beatBuffer = null;
     const BEAT_DURATION_SEC = 1.0;
 
-    // ★初期設定：triggerをfalseに変更
     let config = { showVal: false, showArea: false, showLines: false, trigger: false };
     let currentTScale = 1.0, currentFScale = 1.0;
     const MARGIN_TOP = 60, MARGIN_X = 50, MARGIN_Y = 30;
@@ -210,6 +210,7 @@
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser(); 
             analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.8; 
             dataTime = new Uint8Array(analyser.fftSize); dataFreq = new Uint8Array(analyser.frequencyBinCount);
             
             beatBuffer = new Uint8Array(audioCtx.sampleRate * 2.0); 
@@ -322,14 +323,12 @@
             const vLabels = autoScale ? [{val:0, text:"-REL"}, {val:0.5, text:"0"}, {val:1.0, text:"+REL"}] : [{val:0, text:"-1.0"}, {val:0.5, text:"0"}, {val:1.0, text:"+1.0"}];
             const { mx, mt, graphW, graphH } = drawBase(tCtx, tCanvas, xSettings, vLabels);
             
-            // データ読み出し位置決定
             let startIndex = 0;
             if (isBeatMode && !isSourceMode) {
                 let baseIndex = beatBuffer.length - (audioCtx.sampleRate * 1.0);
                 if (baseIndex < 0) baseIndex = 0;
                 startIndex = baseIndex;
 
-                // トリガーON時のみ、ピーク位置を検索してstartIndexをズラす
                 if (config.trigger) {
                     const searchStart = Math.floor(beatBuffer.length * 0.25);
                     let maxAmp = 0;
@@ -369,42 +368,57 @@
             tCtx.beginPath();
 
             if (isBeatMode) {
-                // うなり描画
+                // 【うなりモード】多角形塗りつぶし（隙間対策済）
                 const samplesToDraw = audioCtx.sampleRate * 1.0; 
                 const samplesPerPixel = samplesToDraw / graphW;
-                tCtx.fillStyle = "var(--beat-color)"; 
+                tCtx.fillStyle = "var(--beat-color)";
                 
                 const dataOffset = isSourceMode ? 0 : startIndex;
+                const tops = [];
+                const bottoms = [];
 
-                for (let x = 0; x < graphW; x++) {
+                for (let x = 0; x <= graphW; x++) {
                     const start = Math.floor(dataOffset + x * samplesPerPixel);
                     const end = Math.floor(dataOffset + (x + 1) * samplesPerPixel);
                     let minVal = 255, maxVal = 0;
+                    
+                    if (start >= displayData.length) {
+                        tops.push({x: mx + x, y: mt + graphH/2});
+                        bottoms.push({x: mx + x, y: mt + graphH/2});
+                        continue;
+                    }
+
                     for (let j = start; j < end && j < displayData.length; j++) {
                         if (displayData[j] < minVal) minVal = displayData[j];
                         if (displayData[j] > maxVal) maxVal = displayData[j];
                     }
+                    if (maxVal === 0 && minVal === 255) { maxVal = 128; minVal = 128; }
+
                     const yTop = mt + (graphH / 2) - ((maxVal - 128)/128 * currentTScale * (graphH / 2));
                     const yBottom = mt + (graphH / 2) - ((minVal - 128)/128 * currentTScale * (graphH / 2));
-                    let h = yBottom - yTop; if (h < 1) h = 1;
-                    tCtx.fillRect(mx + x, yTop, 1, h);
+                    
+                    tops.push({x: mx + x, y: yTop});
+                    bottoms.push({x: mx + x, y: yBottom});
                 }
 
-                // うなりガイド (トリガーの有無に関わらず、画面上のピークに合わせて表示)
+                tCtx.beginPath();
+                if(tops.length > 0) tCtx.moveTo(tops[0].x, tops[0].y);
+                for(let i=1; i<tops.length; i++) tCtx.lineTo(tops[i].x, tops[i].y);
+                for(let i=bottoms.length-1; i>=0; i--) tCtx.lineTo(bottoms[i].x, bottoms[i].y);
+                tCtx.closePath();
+                tCtx.fill();
+
+                // ガイド線などの表示
                 const fBeat = Math.abs(beatFreq1 - beatFreq2);
                 const tBeat = (fBeat > 0.1) ? (1 / fBeat) * 1000 : 0; 
 
                 if (fBeat > 0.1) {
-                    // ★ピーク位置決定：画面内のデータから常に探す (これで動く波にも追従する)
                     let peakTimeMs = 0;
-                    
-                    // 実測モードまたはトリガーOFF時は、画面上のデータからピークを探す
                     let maxAmp = 0, peakIdx = 0;
-                    // SourceModeならバッファ全体、マイクモードなら表示分(1秒)
                     const len = (isSourceMode) ? sourceSignalBuffer.length : (audioCtx.sampleRate * 1.0);
                     const offset = (isSourceMode) ? 0 : startIndex;
 
-                    for(let i=0; i<len; i+=20) { // 間引き探索
+                    for(let i=0; i<len; i+=20) { 
                         if (displayData[offset + i] === undefined) break;
                         let val = Math.abs(displayData[offset + i] - 128);
                         if(val > maxAmp) { maxAmp = val; peakIdx = i; }
@@ -524,4 +538,3 @@
 </script>
 </body>
 </html>
-　
