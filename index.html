@@ -12,12 +12,14 @@
             --analysis-color: #00ffff; --text-highlight: #ffff00;
             --beat-color: #ff99cc; --beat-guide: #ff4444;
         }
-        /* touch-action: none を追加してスマホでの誤操作（ズーム等）を防止 */
-        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; touch-action: none; }
+        /* ★修正: body全体の操作無効化をやめ、自然な操作感に戻しました */
+        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; }
         
         .controls { 
             display: flex; gap: 5px; padding: 10px; background: var(--panel-bg); 
             min-height: 75px; flex-wrap: wrap; box-sizing: border-box; align-items: center;
+            /* コントロール部分はタッチ操作を許可 */
+            touch-action: manipulation;
         }
         button { flex: 1; min-width: 70px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 8px 2px; height: 40px; }
         #startBtn { background: #28a745; flex: 1.5; }
@@ -30,7 +32,12 @@
 
         .main-container { display: flex; flex-direction: column; height: calc(100vh - 85px); padding: 10px; box-sizing: border-box; gap: 10px; }
         
-        .canvas-wrapper { flex: 1; background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+        /* ★修正: グラフエリアのみ、ズームなどの誤操作を防止 */
+        .canvas-wrapper { 
+            flex: 1; background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; 
+            display: flex; flex-direction: column; position: relative; 
+            touch-action: none; /* ここだけ無効化 */
+        }
         .graph-header {
             padding: 5px 10px; font-size: 12px; font-weight: bold;
             background: rgba(30, 30, 30, 1); border-bottom: 1px solid #444;
@@ -57,7 +64,8 @@
             position: fixed; bottom: 20px; right: 20px; width: 180px; 
             background: rgba(51, 51, 51, 0.95); border: 2px solid #00ffff;
             border-radius: 12px; padding: 10px; z-index: 99999; 
-            flex-direction: column; gap: 8px; 
+            flex-direction: column; gap: 8px;
+            touch-action: manipulation; /* パネル内の操作は許可 */
         }
         .dev-control { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: #ccc; }
         .dev-val { color: #ffff00; font-weight: bold; float: right; }
@@ -380,10 +388,8 @@
                 const tops = [];
                 const bottoms = [];
 
-                // ループ回数を削減
                 for (let x = 0; x <= graphW; x += drawStep) {
                     const start = Math.floor(dataOffset + x * samplesPerPixel);
-                    // 次のステップまでカバーするように範囲を広げる
                     const end = Math.floor(dataOffset + (x + drawStep) * samplesPerPixel);
                     let minVal = 255, maxVal = 0;
                     
@@ -413,7 +419,6 @@
                 tCtx.closePath();
                 tCtx.fill();
 
-                // ガイド線などの表示
                 const fBeat = Math.abs(beatFreq1 - beatFreq2);
                 const tBeat = (fBeat > 0.1) ? (1 / fBeat) * 1000 : 0; 
 
@@ -456,7 +461,6 @@
                 }
 
             } else {
-                // 通常モード描画
                 tCtx.lineWidth = 2 * dpr; tCtx.strokeStyle = isFrozen ? "#ff4444" : "var(--os-color)";
                 let triggerOffset = 0; 
                 for (let i=1; i<dataTime.length/2; i++) { if(dataTime[i-1] < 128 && dataTime[i] >= 128) { triggerOffset = i; break; } }
@@ -539,7 +543,11 @@
         gainNode.connect(audioCtx.destination); gainNode.connect(analyser);
         osc1.start(); osc2.start();
     }
-    function devStop(){ if(osc1){ try{osc1.stop();osc2.stop();}catch(e){} osc1.disconnect();osc2.disconnect();osc1=null;osc2=null; } }
+    // ★修正: 停止処理の強化 (どちらか片方だけ残っていてもエラーにならないようにする)
+    function devStop(){ 
+        if(osc1){ try{osc1.stop();}catch(e){} try{osc1.disconnect();}catch(e){} osc1=null; }
+        if(osc2){ try{osc2.stop();}catch(e){} try{osc2.disconnect();}catch(e){} osc2=null; }
+    }
 </script>
 </body>
 </html>
