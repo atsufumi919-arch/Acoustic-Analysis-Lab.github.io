@@ -12,14 +12,13 @@
             --analysis-color: #00ffff; --text-highlight: #ffff00;
             --beat-color: #ff99cc; --beat-guide: #ff4444;
         }
-        /* ★修正: body全体の操作無効化をやめ、自然な操作感に戻しました */
-        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; }
+        /* bodyへの touch-action: none は維持しつつ、ボタン操作を確実にする */
+        body { background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; touch-action: none; }
         
         .controls { 
             display: flex; gap: 5px; padding: 10px; background: var(--panel-bg); 
             min-height: 75px; flex-wrap: wrap; box-sizing: border-box; align-items: center;
-            /* コントロール部分はタッチ操作を許可 */
-            touch-action: manipulation;
+            touch-action: manipulation; /* ボタン操作を許可 */
         }
         button { flex: 1; min-width: 70px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 8px 2px; height: 40px; }
         #startBtn { background: #28a745; flex: 1.5; }
@@ -32,11 +31,10 @@
 
         .main-container { display: flex; flex-direction: column; height: calc(100vh - 85px); padding: 10px; box-sizing: border-box; gap: 10px; }
         
-        /* ★修正: グラフエリアのみ、ズームなどの誤操作を防止 */
         .canvas-wrapper { 
             flex: 1; background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; 
             display: flex; flex-direction: column; position: relative; 
-            touch-action: none; /* ここだけ無効化 */
+            touch-action: none; /* グラフ操作（ズーム等）は無効化 */
         }
         .graph-header {
             padding: 5px 10px; font-size: 12px; font-weight: bold;
@@ -50,6 +48,7 @@
         #settingsPanel {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8); z-index: 100000; justify-content: center; align-items: center;
+            touch-action: manipulation;
         }
         .settings-content {
             background: #333; padding: 20px; border-radius: 12px; border: 2px solid #00ffff; width: 300px;
@@ -65,7 +64,7 @@
             background: rgba(51, 51, 51, 0.95); border: 2px solid #00ffff;
             border-radius: 12px; padding: 10px; z-index: 99999; 
             flex-direction: column; gap: 8px;
-            touch-action: manipulation; /* パネル内の操作は許可 */
+            touch-action: manipulation; /* パネル内の操作を確実に許可 */
         }
         .dev-control { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: #ccc; }
         .dev-val { color: #ffff00; font-weight: bold; float: right; }
@@ -134,8 +133,8 @@
         <input type="range" id="beatFreq" min="440" max="445" step="0.1" value="442" oninput="updateDevFreq()">
     </div>
     <div style="display: flex; gap: 5px; margin-top:5px;">
-        <button onclick="devPlayBeat()" style="flex:1; height:30px; background:#444;">再生</button>
-        <button onclick="devStop()" style="height:30px; background:#822;">■ 停止</button>
+        <button onclick="devPlayBeat()" style="flex:1; height:30px; background:#444;" id="devPlayBtn">再生</button>
+        <button onclick="devStop()" style="height:30px; background:#822;" id="devStopBtn">■ 停止</button>
     </div>
     <div class="dev-control" style="margin-top:5px;">
         <span>音量: <input type="range" id="vowelVol" min="0" max="1" step="0.1" value="0.5" oninput="updateDevVol()" style="width:100%;"></span>
@@ -377,8 +376,7 @@
 
             if (isBeatMode) {
                 // 【うなりモード】多角形塗りつぶし（軽量化版）
-                // 1ドットごとではなく、2ドットごとに計算して点を間引く
-                const drawStep = 2; // 間引きステップ (大きくすると軽くなる)
+                const drawStep = 2; // 間引きステップ
                 
                 const samplesToDraw = audioCtx.sampleRate * 1.0; 
                 const samplesPerPixel = samplesToDraw / graphW;
@@ -525,6 +523,9 @@
     }
 
     let osc1=null, osc2=null, gainNode=null;
+    // 重複再生防止のためのフラグ
+    let isPlayingDev = false;
+
     function ensureAudioContext() { if (!audioCtx) { document.getElementById('startBtn').click(); return false; } return true; }
     function updateDevVol() { if(gainNode) gainNode.gain.value = document.getElementById('vowelVol').value; }
     function updateDevFreq() {
@@ -532,21 +533,40 @@
         document.getElementById('freqDisp').innerText = beatFreq2 + "Hz";
         if(osc2) { osc2.frequency.setValueAtTime(beatFreq2, audioCtx.currentTime); }
     }
+    
+    // ★修正: 再生処理の強化 (重複防止とGainNodeの管理)
     function devPlayBeat(){
+        if(isPlayingDev) { devStop(); return; } // 再生中なら止める (トグル動作)
         if(!ensureAudioContext()){ setTimeout(devPlayBeat,200); return; }
+        
+        // 念のため古いのがあれば消す
         devStop();
+        
         beatFreq2 = document.getElementById('beatFreq').value;
         osc1 = audioCtx.createOscillator(); osc1.frequency.value = beatFreq1; 
         osc2 = audioCtx.createOscillator(); osc2.frequency.value = beatFreq2;
         gainNode = audioCtx.createGain(); gainNode.gain.value = document.getElementById('vowelVol').value;
+        
         osc1.connect(gainNode); osc2.connect(gainNode);
         gainNode.connect(audioCtx.destination); gainNode.connect(analyser);
+        
         osc1.start(); osc2.start();
+        isPlayingDev = true;
+        document.getElementById('devPlayBtn').style.background = "#e83e8c"; // 再生中色
+        document.getElementById('devPlayBtn').innerText = "再生中";
     }
-    // ★修正: 停止処理の強化 (どちらか片方だけ残っていてもエラーにならないようにする)
+
+    // ★修正: 最強の停止処理 (GainNodeを切断して物理的に音を消す)
     function devStop(){ 
+        // 音源停止
         if(osc1){ try{osc1.stop();}catch(e){} try{osc1.disconnect();}catch(e){} osc1=null; }
         if(osc2){ try{osc2.stop();}catch(e){} try{osc2.disconnect();}catch(e){} osc2=null; }
+        // 出力回路の切断 (これが最強の停止)
+        if(gainNode){ try{gainNode.disconnect();}catch(e){} gainNode=null; }
+        
+        isPlayingDev = false;
+        document.getElementById('devPlayBtn').style.background = "#444";
+        document.getElementById('devPlayBtn').innerText = "再生";
     }
 </script>
 </body>
