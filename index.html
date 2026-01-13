@@ -13,18 +13,26 @@
             --beat-color: #ff99cc; --beat-guide: #ff4444;
         }
         
+        /* ★レイアウト修正: 画面全体をFlexコンテナにし、はみ出しを完全防止 */
         body { 
-            background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; overflow: hidden; 
+            background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; 
+            height: 100vh; /* Fallback */
+            height: 100dvh; /* Dynamic Viewport Height (スマホのアドレスバー対応) */
+            display: flex; flex-direction: column; overflow: hidden;
             touch-action: manipulation; 
         }
         
+        /* コントロールエリアは中身の分だけ高さを確保し、縮まないようにする */
         .controls { 
+            flex: 0 0 auto; 
             display: flex; gap: 5px; padding: 10px; background: var(--panel-bg); 
-            min-height: 75px; flex-wrap: wrap; box-sizing: border-box; align-items: center;
+            flex-wrap: wrap; box-sizing: border-box; align-items: center; justify-content: center;
         }
+        
         button { 
-            flex: 1; min-width: 70px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 8px 2px; height: 40px; 
+            flex: 1; min-width: 60px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 0 2px; height: 40px; 
             transition: transform 0.05s ease;
+            display: flex; align-items: center; justify-content: center;
         }
         #startBtn { background: #28a745; flex: 1.5; }
         #layoutBtn { background: #6c757d; }
@@ -32,23 +40,35 @@
         #vScaleBtn { background: #fd7e14; }
         #beatBtn { background: #6f42c1; }
         #freezeBtn { background: #dc3545; }
-        #settingsBtn { flex: 0.5; background: #555; font-size: 18px; min-width: 40px; }
+        #settingsBtn { flex: 0.4; background: #555; font-size: 18px; min-width: 40px; }
 
-        .main-container { display: flex; flex-direction: column; height: calc(100vh - 85px); padding: 10px; box-sizing: border-box; gap: 10px; }
+        /* ★メインエリア修正: 残りの高さを全て使う */
+        .main-container { 
+            flex: 1; 
+            display: flex; flex-direction: column; 
+            padding: 5px 10px 10px 10px; /* 上左右下 */
+            box-sizing: border-box; gap: 8px; 
+            overflow: hidden; /* 中身が溢れてもスクロールさせない */
+            min-height: 0; /* Flexboxの子要素がはみ出さないための呪文 */
+        }
         
         .canvas-wrapper { 
-            flex: 1; background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; 
+            flex: 1; 
+            background: #000; border: 1px solid #444; border-radius: 8px; overflow: hidden; 
             display: flex; flex-direction: column; position: relative; 
             touch-action: none; 
+            min-height: 0; /* これがないとグラフが縮まなくなる */
         }
         .graph-header {
+            flex: 0 0 auto; /* ヘッダーの高さは固定 */
             padding: 5px 10px; font-size: 12px; font-weight: bold;
             background: rgba(30, 30, 30, 1); border-bottom: 1px solid #444;
             display: flex; align-items: center; justify-content: space-between;
         }
         .header-indicator { display: inline-block; width: 6px; height: 12px; margin-right: 8px; border-radius: 2px; }
         
-        canvas { flex: 1; width: 100%; display: block; }
+        /* Canvasは親のサイズに追従 */
+        canvas { flex: 1; width: 100%; height: 100%; display: block; }
         
         #settingsPanel {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -56,12 +76,14 @@
             touch-action: manipulation;
         }
         .settings-content {
-            background: #333; padding: 20px; border-radius: 12px; border: 2px solid #00ffff; width: 300px;
+            background: #333; padding: 20px; border-radius: 12px; border: 2px solid #00ffff; width: 320px; max-width: 90vw;
         }
         .settings-content h3 { margin-top: 0; color: #00ffff; text-align: center; }
         .setting-item { margin: 15px 0; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
         .setting-item input[type="checkbox"] { transform: scale(1.5); }
         .close-settings { width: 100%; background: #555; margin-top: 10px; }
+
+        input[type=range] { vertical-align: middle; }
 
         #devPanel { 
             display: none; 
@@ -89,7 +111,18 @@
 
 <div id="settingsPanel">
     <div class="settings-content">
-        <h3>解析表示設定</h3>
+        <h3>設定</h3>
+        
+        <div class="setting-item" style="display:block;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <label>マイク入力感度 (Gain)</label>
+                <span id="gainVal" style="color:#ffcc00; font-weight:bold;">×3.0</span>
+            </div>
+            <input type="range" id="inputGainRange" min="1" max="100" step="1" value="3" style="width:100%;">
+            <div style="font-size:10px; color:#aaa; margin-top:2px;">※感度を上げすぎるとグラフが消える場合があります</div>
+        </div>
+        <hr style="border: 1px solid #555;">
+
         <div class="setting-item">
             <label>1. 数値を表示<br><span style="font-size:10px; color:#aaa;">(通常:T,f / うなり:Tb,fb)</span></label>
             <input type="checkbox" id="checkVal">
@@ -162,7 +195,7 @@
     let beatFreq1 = 440, beatFreq2 = 442;
     let isDevPanelOpen = false;
     let sourceSignalBuffer = null;
-    let inputGainNode = null; // マイク入力増幅用
+    let inputGainNode = null; 
 
     function toggleSettings() {
         const p = document.getElementById('settingsPanel');
@@ -174,19 +207,31 @@
     document.getElementById('checkLines').onchange = (e) => config.showLines = e.target.checked;
     document.getElementById('checkTrigger').onchange = (e) => config.trigger = e.target.checked;
     
+    document.getElementById('inputGainRange').oninput = (e) => {
+        const val = e.target.value;
+        document.getElementById('gainVal').innerText = "×" + parseFloat(val).toFixed(1);
+        if(inputGainNode) inputGainNode.gain.value = val;
+    };
+
     document.getElementById('checkDev').onchange = (e) => {
         isDevPanelOpen = e.target.checked;
         document.getElementById('devPanel').style.display = isDevPanelOpen ? 'flex' : 'none';
         if(isDevPanelOpen && !audioCtx) document.getElementById('startBtn').click();
     };
 
+    // ★重要: レイアウト修正版リサイズロジック
+    // CSSのFlexboxで決まったサイズに合わせてCanvasを更新する
     function resize() {
         const dpr = window.devicePixelRatio || 1;
         [document.getElementById('wrapperTime'), document.getElementById('wrapperFreq')].forEach((w, i) => {
             const canvas = (i===0) ? tCanvas : fCanvas;
             const headerHeight = w.querySelector('.graph-header').offsetHeight;
             const rect = w.getBoundingClientRect();
-            if(rect.width > 0) { canvas.width = rect.width * dpr; canvas.height = (rect.height - headerHeight) * dpr; }
+            // width, heightが正の数なら適用。Flexboxのおかげでrectは正確な表示領域を示す。
+            if(rect.width > 0 && rect.height > 0) { 
+                canvas.width = rect.width * dpr; 
+                canvas.height = (rect.height - headerHeight) * dpr; 
+            }
         });
     }
     window.addEventListener('resize', resize);
@@ -210,10 +255,11 @@
             title.innerText = "波形 (時間軸)"; indicator.style.background = "var(--os-color)";
         }
     };
+    
     function updateLayout() {
         document.getElementById('wrapperTime').style.display = (!isSplitView && currentMode !== 'time') ? 'none' : 'flex';
         document.getElementById('wrapperFreq').style.display = (!isSplitView && currentMode !== 'freq') ? 'none' : 'flex';
-        setTimeout(resize, 50);
+        setTimeout(resize, 300); 
     }
     document.getElementById('freezeBtn').onclick = () => { isFrozen = !isFrozen; document.getElementById('freezeBtn').innerText = isFrozen ? "再開" : "一時停止"; };
 
@@ -230,16 +276,17 @@
             sourceSignalBuffer = new Uint8Array(audioCtx.sampleRate * 1.0);
             
             try {
-                // ★修正: マイク設定を標準に戻す (autoGainControlなどを端末任せにする)
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const source = audioCtx.createMediaStreamSource(stream);
-                
-                // ★追加: デジタル増幅 (GainNode) を挟む。デフォルトで3倍に増幅
+                const hpFilter = audioCtx.createBiquadFilter();
+                hpFilter.type = 'highpass';
+                hpFilter.frequency.value = 10; 
                 inputGainNode = audioCtx.createGain();
-                inputGainNode.gain.value = 3.0; 
-                source.connect(inputGainNode);
+                const initialGain = document.getElementById('inputGainRange').value;
+                inputGainNode.gain.value = initialGain;
+                source.connect(hpFilter);
+                hpFilter.connect(inputGainNode);
                 inputGainNode.connect(analyser);
-
                 document.getElementById('startBtn').innerText = "実行中"; document.getElementById('startBtn').style.background = "#28a745"; 
             } catch (err) {
                 alert("マイクが使えません。テスト音モードで起動します。"); 
@@ -333,7 +380,12 @@
         const dpr = window.devicePixelRatio || 1;
         const fundamental = findFundamental(dataTime, audioCtx.sampleRate);
 
-        if (getComputedStyle(document.getElementById('wrapperTime')).display !== 'none') {
+        const wTime = document.getElementById('wrapperTime');
+        const wFreq = document.getElementById('wrapperFreq');
+        if (getComputedStyle(wTime).display !== 'none' && tCanvas.height === 0) resize();
+        if (getComputedStyle(wFreq).display !== 'none' && fCanvas.height === 0) resize();
+
+        if (getComputedStyle(wTime).display !== 'none') {
             
             const isSourceMode = (isBeatMode && isDevPanelOpen);
             const displayData = isSourceMode ? sourceSignalBuffer : (isBeatMode ? beatBuffer : dataTime);
@@ -491,6 +543,42 @@
                     if (config.showVal) {
                         tCtx.fillStyle = "#ffff00"; tCtx.textAlign = "left"; tCtx.font = `bold ${16 * dpr}px monospace`;
                         tCtx.fillText(`T=${(1000/fundamental).toFixed(2)}ms  f=${Math.round(fundamental)}Hz`, mx, mt - 15*dpr);
+                    }
+                }
+            }
+        }
+
+        if (getComputedStyle(wFreq).display !== 'none') {
+            const displayMaxHz = 5000;
+            const indexRange = Math.floor((displayMaxHz / (audioCtx.sampleRate/2)) * dataFreq.length);
+            const vLabels = autoScale ? [{val:0, text:"0%"}, {val:0.5, text:"50%"}, {val:1.0, text:"100%"}] : [{val:0, text:"0"}, {val:0.5, text:"0.5"}, {val:1.0, text:"1.0"}];
+            const xSettings = { max: displayMaxHz, step: 500, subStep: 100, unit: "Hz" };
+            const { mx, mt, graphW, graphH } = drawBase(fCtx, fCanvas, xSettings, vLabels);
+            let targetFScale = 1.0;
+            if (autoScale) {
+                let maxF = 0; for(let i=0; i<indexRange; i++) { if(dataFreq[i] > maxF) maxF = dataFreq[i]; }
+                if(maxF > 1) targetFScale = 245 / maxF;
+            }
+            currentFScale = currentFScale * 0.9 + targetFScale * 0.1;
+            if (autoScale) { fCtx.fillStyle = "#fd7e14"; fCtx.textAlign = "right"; fCtx.font = `${12 * dpr}px sans-serif`; fCtx.fillText(`Scale: ×${currentFScale.toFixed(1)}`, fCanvas.width - 10, mt - 10*dpr); }
+            const barWidth = graphW / indexRange;
+            for (let i = 0; i < indexRange; i++) {
+                let val = (dataFreq[i] / 255) * graphH * currentFScale;
+                if (val > graphH) val = graphH;
+                fCtx.fillStyle = isFrozen ? "#ff4444" : `hsl(${(i/indexRange)*120}, 100%, 50%)`;
+                fCtx.fillRect(mx + (i * barWidth), mt + graphH - val, barWidth, val);
+            }
+            if (fundamental > 0 && !isBeatMode && config.showLines) {
+                for (let n = 1; n <= 5; n++) {
+                    const f = fundamental * n; const x = mx + (f / displayMaxHz) * graphW;
+                    if (x < mx + graphW) {
+                        fCtx.strokeStyle = "#00ffff"; fCtx.lineWidth = (n===1)? 2*dpr : 1*dpr;
+                        fCtx.beginPath(); fCtx.moveTo(x, mt); fCtx.lineTo(x, mt + graphH); fCtx.stroke();
+                        fCtx.fillStyle = "#00ffff"; fCtx.textAlign = "center"; fCtx.font = `bold ${11 * dpr}px sans-serif`;
+                        const yOffset = (n % 2 !== 0) ? 25 * dpr : 10 * dpr;
+                        fCtx.fillText(n===1 ? "f0" : n+"f0", x, mt - yOffset - 12*dpr);
+                        fCtx.fillStyle = "#ffff00"; fCtx.font = `${10 * dpr}px sans-serif`;
+                        fCtx.fillText(`${Math.round(f)}`, x, mt - yOffset);
                     }
                 }
             }
