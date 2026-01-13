@@ -15,9 +15,8 @@
         
         body { 
             background: var(--bg-color); color: white; font-family: sans-serif; margin: 0; 
-            height: 100vh; height: 100dvh; 
+            height: 100vh; height: 100dvh;
             display: flex; flex-direction: column; overflow: hidden;
-            /* ボタンの反応速度を確保しつつ、ダブルタップ拡大だけ防ぐ設定 */
             touch-action: manipulation; 
         }
         
@@ -31,11 +30,7 @@
             flex: 1; min-width: 60px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 0 2px; height: 40px; 
             transition: transform 0.05s ease;
             display: flex; align-items: center; justify-content: center;
-            /* スマホでボタンを長押しした時のメニューを出さない */
-            -webkit-user-select: none; user-select: none;
         }
-        button:active { transform: scale(0.95); } /* 押した感触をCSSだけで実現 */
-
         #startBtn { background: #28a745; flex: 1.5; }
         #layoutBtn { background: #6c757d; }
         #modeBtn { background: #007bff; }
@@ -78,6 +73,7 @@
         .close-settings { width: 100%; background: #555; margin-top: 10px; }
 
         input[type=range] { vertical-align: middle; }
+        select { background: #444; color: white; border: 1px solid #666; border-radius: 4px; padding: 4px; font-size: 12px; }
 
         #devPanel { 
             display: none; 
@@ -113,8 +109,20 @@
                 <span id="gainVal" style="color:#ffcc00; font-weight:bold;">×3.0</span>
             </div>
             <input type="range" id="inputGainRange" min="1" max="100" step="1" value="3" style="width:100%;">
-            <div style="font-size:10px; color:#aaa; margin-top:2px;">※感度を上げすぎるとグラフが消える場合があります</div>
         </div>
+        <hr style="border: 1px solid #555;">
+
+        <div class="setting-item">
+            <label>周波数レンジ (横軸最大)</label>
+            <select id="freqRangeSelect">
+                <option value="1000">1000Hz (高分解能:約5Hz刻み)</option>
+                <option value="2000">2000Hz (中分解能:約10Hz刻み)</option>
+                <option value="5000" selected>5000Hz (標準:約20Hz刻み)</option>
+                <option value="10000">10000Hz (広域)</option>
+                <option value="20000">20000Hz (全域)</option>
+            </select>
+        </div>
+        <div style="font-size:10px; color:#aaa; margin-bottom:10px; text-align:right;">※低いレンジほど分析が細かくなります</div>
         <hr style="border: 1px solid #555;">
 
         <div class="setting-item">
@@ -184,6 +192,8 @@
 
     let config = { showVal: false, showArea: false, showLines: false, trigger: false };
     let currentTScale = 1.0, currentFScale = 1.0;
+    let displayMaxHz = 5000;
+
     const MARGIN_TOP = 60, MARGIN_X = 50, MARGIN_Y = 30;
     
     let beatFreq1 = 440, beatFreq2 = 442;
@@ -201,6 +211,25 @@
     document.getElementById('checkLines').onchange = (e) => config.showLines = e.target.checked;
     document.getElementById('checkTrigger').onchange = (e) => config.trigger = e.target.checked;
     
+    // ★周波数レンジ変更処理：FFTサイズ（分解能）も同時に変更する
+    document.getElementById('freqRangeSelect').onchange = (e) => {
+        displayMaxHz = parseInt(e.target.value);
+        if(analyser) {
+            let newFFT = 2048;
+            // 低い周波数レンジほど、FFTサイズを大きくして分解能を上げる
+            if(displayMaxHz <= 1000) newFFT = 8192;      // ~5.4Hz
+            else if(displayMaxHz <= 2000) newFFT = 4096; // ~10.8Hz
+            else newFFT = 2048;                          // ~21.5Hz
+            
+            if(analyser.fftSize !== newFFT) {
+                analyser.fftSize = newFFT;
+                // バッファ再確保
+                dataTime = new Uint8Array(analyser.fftSize);
+                dataFreq = new Uint8Array(analyser.frequencyBinCount);
+            }
+        }
+    };
+
     document.getElementById('inputGainRange').oninput = (e) => {
         const val = e.target.value;
         document.getElementById('gainVal').innerText = "×" + parseFloat(val).toFixed(1);
@@ -259,7 +288,13 @@
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser(); 
-            analyser.fftSize = 2048;
+            
+            // ★初期FFTサイズの設定
+            const initialRange = parseInt(document.getElementById('freqRangeSelect').value);
+            if(initialRange <= 1000) analyser.fftSize = 8192;
+            else if(initialRange <= 2000) analyser.fftSize = 4096;
+            else analyser.fftSize = 2048;
+
             analyser.smoothingTimeConstant = 0.8; 
             dataTime = new Uint8Array(analyser.fftSize); dataFreq = new Uint8Array(analyser.frequencyBinCount);
             
@@ -363,8 +398,7 @@
                 beatBuffer.set(beatBuffer.subarray(dataTime.length)); 
                 beatBuffer.set(dataTime, beatBuffer.length - dataTime.length); 
             }
-            // ★修正: 再生中(isPlayingDev)の場合のみ波形データを生成する
-            if (isBeatMode && isDevPanelOpen && isPlayingDev) {
+            if (isBeatMode && isDevPanelOpen) {
                 generateSourceSignal();
             }
         }
@@ -541,10 +575,20 @@
         }
 
         if (getComputedStyle(wFreq).display !== 'none') {
-            const displayMaxHz = 5000;
+            
+            // ★周波数レンジに応じて目盛りを最適化
+            let step, subStep;
+            switch(displayMaxHz) {
+                case 1000: step = 100; subStep = 10; break;
+                case 2000: step = 200; subStep = 20; break;
+                case 5000: step = 500; subStep = 100; break;
+                case 10000: step = 1000; subStep = 200; break;
+                default: step = 2000; subStep = 500; break;
+            }
+
             const indexRange = Math.floor((displayMaxHz / (audioCtx.sampleRate/2)) * dataFreq.length);
             const vLabels = autoScale ? [{val:0, text:"0%"}, {val:0.5, text:"50%"}, {val:1.0, text:"100%"}] : [{val:0, text:"0"}, {val:0.5, text:"0.5"}, {val:1.0, text:"1.0"}];
-            const xSettings = { max: displayMaxHz, step: 500, subStep: 100, unit: "Hz" };
+            const xSettings = { max: displayMaxHz, step: step, subStep: subStep, unit: "Hz" };
             const { mx, mt, graphW, graphH } = drawBase(fCtx, fCanvas, xSettings, vLabels);
             let targetFScale = 1.0;
             if (autoScale) {
@@ -592,7 +636,7 @@
         if(isPlayingDev) { devStop(); return; }
         if(!ensureAudioContext()){ setTimeout(devPlayBeat,200); return; }
         
-        devStop(); // 前の音が残っていたら消す
+        devStop();
         
         beatFreq2 = document.getElementById('beatFreq').value;
         osc1 = audioCtx.createOscillator(); osc1.frequency.value = beatFreq1; 
@@ -618,8 +662,14 @@
         document.getElementById('devPlayBtn').innerText = "再生";
     }
     
-    // ★重要: タブレットでのボタン暴発（二重反応）を防ぐため、手動のタッチイベントリスナーを削除しました。
-    // CSSの 'touch-action: manipulation' だけで十分に高速かつ正確に動作します。
+    document.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            btn.click();
+            btn.style.transform = "scale(0.95)";
+            setTimeout(() => { btn.style.transform = "scale(1)"; }, 100);
+        }, { passive: false });
+    });
 </script>
 </body>
 </html>
