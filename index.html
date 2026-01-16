@@ -27,7 +27,7 @@
         }
         
         button { 
-            flex: 1; min-width: 60px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 0 2px; height: 40px; 
+            flex: 1; min-width: 50px; font-size: 11px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; color: white; padding: 0 2px; height: 40px; 
             transition: transform 0.05s ease;
             display: flex; align-items: center; justify-content: center;
         }
@@ -37,7 +37,8 @@
         #vScaleBtn { background: #fd7e14; }
         #beatBtn { background: #6f42c1; }
         #freezeBtn { background: #dc3545; }
-        #settingsBtn { flex: 0.4; background: #555; font-size: 18px; min-width: 40px; }
+        #settingsBtn { flex: 0.3; background: #555; font-size: 18px; min-width: 40px; }
+        #helpBtn { flex: 0.3; background: #17a2b8; font-size: 16px; min-width: 40px; }
 
         .main-container { 
             flex: 1; display: flex; flex-direction: column; 
@@ -59,18 +60,27 @@
         
         canvas { flex: 1; width: 100%; height: 100%; display: block; }
         
-        #settingsPanel {
+        /* モーダル共通スタイル */
+        .modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 100000; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.85); z-index: 100000; justify-content: center; align-items: center;
             touch-action: manipulation;
         }
-        .settings-content {
-            background: #333; padding: 20px; border-radius: 12px; border: 2px solid #00ffff; width: 320px; max-width: 90vw;
+        .modal-content {
+            background: #333; padding: 20px; border-radius: 12px; border: 2px solid #00ffff; 
+            width: 340px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+            box-sizing: border-box;
         }
-        .settings-content h3 { margin-top: 0; color: #00ffff; text-align: center; }
+        .modal-content h3 { margin-top: 0; color: #00ffff; text-align: center; border-bottom: 1px solid #555; padding-bottom: 10px; }
         .setting-item { margin: 15px 0; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
         .setting-item input[type="checkbox"] { transform: scale(1.5); }
-        .close-settings { width: 100%; background: #555; margin-top: 10px; }
+        .close-modal { width: 100%; background: #555; margin-top: 15px; padding: 10px; }
+
+        .help-text { font-size: 12px; line-height: 1.6; color: #ddd; }
+        .help-text h4 { color: #ffcc00; margin: 10px 0 5px 0; border-left: 3px solid #ffcc00; padding-left: 8px; }
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-right: 5px; }
+        .tag-fs { background: #6c757d; color: white; }
+        .tag-spl { background: #28a745; color: white; }
 
         input[type=range] { vertical-align: middle; }
         select { background: #444; color: white; border: 1px solid #666; border-radius: 4px; padding: 4px; font-size: 12px; }
@@ -97,32 +107,42 @@
     <button id="beatBtn">うなり: OFF</button>
     <button id="freezeBtn">一時停止</button>
     <button id="settingsBtn">⚙️</button>
+    <button id="helpBtn">❓</button>
 </div>
 
-<div id="settingsPanel">
-    <div class="settings-content">
+<div id="settingsPanel" class="modal">
+    <div class="modal-content">
         <h3>設定</h3>
         
         <div class="setting-item" style="display:block;">
+            <label>入力感度 (Gain)</label>
             <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <label>マイク入力感度 (Gain)</label>
+                <span style="font-size:10px; color:#aaa;">x1</span>
                 <span id="gainVal" style="color:#ffcc00; font-weight:bold;">×3.0</span>
+                <span style="font-size:10px; color:#aaa;">x10</span>
             </div>
-            <input type="range" id="inputGainRange" min="1" max="100" step="1" value="3" style="width:100%;">
+            <input type="range" id="inputGainRange" min="1" max="10" step="0.1" value="3" style="width:100%;">
         </div>
         <hr style="border: 1px solid #555;">
 
         <div class="setting-item">
-            <label>周波数レンジ (横軸最大)</label>
+            <label>周波数レンジ (X軸)</label>
             <select id="freqRangeSelect">
-                <option value="1000">1000Hz (高分解能:約5Hz刻み)</option>
-                <option value="2000">2000Hz (中分解能:約10Hz刻み)</option>
-                <option value="5000" selected>5000Hz (標準:約20Hz刻み)</option>
-                <option value="10000">10000Hz (広域)</option>
+                <option value="1000">1000Hz (詳細解析)</option>
+                <option value="2000">2000Hz</option>
+                <option value="5000" selected>5000Hz (標準)</option>
+                <option value="10000">10000Hz</option>
                 <option value="20000">20000Hz (全域)</option>
             </select>
         </div>
-        <div style="font-size:10px; color:#aaa; margin-bottom:10px; text-align:right;">※停止後に変更してズーム可能</div>
+        
+        <div class="setting-item">
+            <label>音量単位 (Y軸)</label>
+            <select id="dbUnitSelect">
+                <option value="spl" selected>dB SPL (音圧目安)</option>
+                <option value="fs">dBFS (デジタル値)</option>
+            </select>
+        </div>
         <hr style="border: 1px solid #555;">
 
         <div class="setting-item">
@@ -144,14 +164,40 @@
         <hr style="border: 1px solid #555;">
         <div class="setting-item" style="color:#aaa;"><label>5. テスト音パネルを表示</label><input type="checkbox" id="checkDev"></div>
         <hr style="border: 1px solid #555;">
-        <button class="close-settings" onclick="toggleSettings()">閉じる</button>
+        <button class="close-modal" onclick="closeModals()">閉じる</button>
+    </div>
+</div>
+
+<div id="helpPanel" class="modal">
+    <div class="modal-content">
+        <h3>音量の単位について</h3>
+        <div class="help-text">
+            <h4><span class="tag tag-fs">dBFS</span> デシベル・フルスケール</h4>
+            <p>「デジタル機器としての正確な値」です。</p>
+            <p>スマホが記録できる「限界の音量」を 0dB とし、そこからどれだけ小さいかを表すため、常にマイナスの値になります。</p>
+            <p>（例：-10dBFS は限界に近い大音量、-90dBFS はほぼ無音）</p>
+
+            <h4><span class="tag tag-spl">dB SPL</span> 音圧レベル (目安)</h4>
+            <p>「人間の感覚や教科書に近い値」です。</p>
+            <p>「無音」を 0dB とし、音が大きくなると数値が増えるプラスの値です。</p>
+            <p>※注意：スマホのマイク性能は機種ごとに異なるため、この値はあくまで目安（相対値）です。正確な騒音計の値とは一致しません。</p>
+            
+            <h4>💡 アプリ内の仕様</h4>
+            <p>本アプリでは、便宜上以下の対応関係で換算しています。</p>
+            <ul style="padding-left:20px; color:#aaa;">
+                <li>-10 dBFS ≒ 90 dB (大音量)</li>
+                <li>-50 dBFS ≒ 50 dB (静か)</li>
+                <li>-90 dBFS ≒ 10 dB (無音)</li>
+            </ul>
+        </div>
+        <button class="close-modal" onclick="closeModals()">理解しました</button>
     </div>
 </div>
 
 <div class="main-container">
     <div class="canvas-wrapper" id="wrapperTime">
         <div class="graph-header">
-            <div><span class="header-indicator" style="background: var(--os-color);" id="timeIndicator"></span><span id="timeTitle">波形 (時間軸)</span></div>
+            <div><span class="header-indicator" style="background: var(--os-color);" id="timeIndicator"></span><span id="timeTitle">波形 (時間軸) <span style="font-size:10px; color:#aaa; font-weight:normal;">[振幅: a.u.]</span></span></div>
         </div>
         <canvas id="timeCanvas"></canvas>
     </div>
@@ -190,7 +236,7 @@
     let isBeatMode = false, beatBuffer = null;
     const BEAT_DURATION_SEC = 1.0;
 
-    let config = { showVal: false, showArea: false, showLines: false, trigger: false };
+    let config = { showVal: false, showArea: false, showLines: false, trigger: false, unit: 'spl' };
     let currentTScale = 1.0, currentFScale = 1.0;
     let displayMaxHz = 5000;
 
@@ -201,17 +247,17 @@
     let sourceSignalBuffer = null;
     let inputGainNode = null; 
 
-    function toggleSettings() {
-        const p = document.getElementById('settingsPanel');
-        p.style.display = (p.style.display === 'flex') ? 'none' : 'flex';
-    }
-    document.getElementById('settingsBtn').onclick = toggleSettings;
+    function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+    function closeModals() { document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); }
+    document.getElementById('settingsBtn').onclick = () => openModal('settingsPanel');
+    document.getElementById('helpBtn').onclick = () => openModal('helpPanel');
+
     document.getElementById('checkVal').onchange = (e) => config.showVal = e.target.checked;
     document.getElementById('checkArea').onchange = (e) => config.showArea = e.target.checked;
     document.getElementById('checkLines').onchange = (e) => config.showLines = e.target.checked;
     document.getElementById('checkTrigger').onchange = (e) => config.trigger = e.target.checked;
+    document.getElementById('dbUnitSelect').onchange = (e) => config.unit = e.target.value;
     
-    // ★周波数レンジ変更：変数だけ変える（バッファはリセットしない）
     document.getElementById('freqRangeSelect').onchange = (e) => {
         displayMaxHz = parseInt(e.target.value);
     };
@@ -253,12 +299,13 @@
         const btn = document.getElementById('beatBtn');
         const title = document.getElementById('timeTitle');
         const indicator = document.getElementById('timeIndicator');
+        const auLabel = " <span style='font-size:10px; color:#aaa; font-weight:normal;'>[振幅: a.u.]</span>";
         if (isBeatMode) {
             btn.innerText = "うなり: ON"; btn.style.background = "#e83e8c";
-            title.innerText = "うなり (1.0秒間)"; indicator.style.background = "var(--beat-color)";
+            title.innerHTML = "うなり (1.0秒間)" + auLabel; indicator.style.background = "var(--beat-color)";
         } else {
             btn.innerText = "うなり: OFF"; btn.style.background = "#6f42c1";
-            title.innerText = "波形 (時間軸)"; indicator.style.background = "var(--os-color)";
+            title.innerHTML = "波形 (時間軸)" + auLabel; indicator.style.background = "var(--os-color)";
         }
     };
     
@@ -275,11 +322,13 @@
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser(); 
             
-            // ★常に高分解能(8192)でキャプチャする（これで停止後のZoomが可能に）
-            // 8192なら分解能は約5.4Hzとなり、1000Hzレンジでも十分に精密
-            analyser.fftSize = 8192; 
+            analyser.minDecibels = -90; 
+            analyser.maxDecibels = -10;
 
-            analyser.smoothingTimeConstant = 0.5; // 少し反応を早くする
+            // FFTサイズは8192で固定（安定性確保）
+            analyser.fftSize = 8192; 
+            analyser.smoothingTimeConstant = 0.5;
+
             dataTime = new Uint8Array(analyser.fftSize); 
             dataFreq = new Uint8Array(analyser.frequencyBinCount);
             
@@ -311,7 +360,6 @@
     };
 
     function findFundamental(buf, sampleRate) {
-        // 基本振動数検出は最初の2048サンプル程度で行う（高速化）
         const len = Math.min(buf.length, 2048);
         let sum = 0; for (let i=0; i<len; i++) { let v = (buf[i]-128)/128; sum += v*v; }
         if (Math.sqrt(sum/len) < 0.02) return -1;
@@ -379,20 +427,23 @@
     function draw() {
         requestAnimationFrame(draw);
         if (!analyser) return;
+
+        if (analyser.fftSize !== dataTime.length) {
+            dataTime = new Uint8Array(analyser.fftSize);
+            dataFreq = new Uint8Array(analyser.frequencyBinCount);
+        }
+
         if (!isFrozen) { 
-            // 常に8192のサイズで取得する
-            analyser.getByteTimeDomainData(dataTime); 
-            analyser.getByteFrequencyData(dataFreq); 
-            if (beatBuffer) { 
-                // dataTimeは8192あるが、beatBufferへは必要な分だけコピーするか、または全体を使う
-                // ここでは先頭2048サンプル分くらいをリングバッファに入れる処理にするのが無難だが
-                // 簡易的に dataTime.length (8192) 分コピーしても良い
-                // ただしbeatBufferの更新頻度との兼ね合いで、リングバッファ処理は少し重くなる可能性がある
-                // 既存ロジックを維持しつつ、リングバッファへの転送量を調整
-                const copyLen = Math.min(dataTime.length, 2048); 
-                beatBuffer.set(beatBuffer.subarray(copyLen)); 
-                beatBuffer.set(dataTime.subarray(0, copyLen), beatBuffer.length - copyLen); 
-            }
+            try {
+                analyser.getByteTimeDomainData(dataTime); 
+                analyser.getByteFrequencyData(dataFreq); 
+                if (beatBuffer) { 
+                    const copyLen = Math.min(dataTime.length, 2048); 
+                    beatBuffer.set(beatBuffer.subarray(copyLen)); 
+                    beatBuffer.set(dataTime.subarray(0, copyLen), beatBuffer.length - copyLen); 
+                }
+            } catch(e) { return; }
+
             if (isBeatMode && isDevPanelOpen) {
                 generateSourceSignal();
             }
@@ -406,16 +457,10 @@
         if (getComputedStyle(wTime).display !== 'none' && tCanvas.height === 0) resize();
         if (getComputedStyle(wFreq).display !== 'none' && fCanvas.height === 0) resize();
 
-        // --- 時間軸 (Time Domain) 描画 ---
         if (getComputedStyle(wTime).display !== 'none') {
-            
             const isSourceMode = (isBeatMode && isDevPanelOpen);
             const displayData = isSourceMode ? sourceSignalBuffer : (isBeatMode ? beatBuffer : dataTime);
-            
-            // ★改良: マイクモード(通常)の時は、FFTサイズが大きくても「最初の50ms」程度だけを表示する
-            // これにより、波形が密集しすぎて黒い帯になるのを防ぐ
             const msTotal = isBeatMode ? 1000 : 50; 
-            
             const xSettings = isBeatMode ? { max: 1000, step: 100, subStep: 10, unit: "ms" } : { max: msTotal, step: 5, subStep: 1, unit: "ms" }; 
             const vLabels = autoScale ? [{val:0, text:"-REL"}, {val:0.5, text:"0"}, {val:1.0, text:"+REL"}] : [{val:0, text:"-1.0"}, {val:0.5, text:"0"}, {val:1.0, text:"+1.0"}];
             const { mx, mt, graphW, graphH } = drawBase(tCtx, tCanvas, xSettings, vLabels);
@@ -425,7 +470,6 @@
                 let baseIndex = beatBuffer.length - (audioCtx.sampleRate * 1.0);
                 if (baseIndex < 0) baseIndex = 0;
                 startIndex = baseIndex;
-
                 if (config.trigger) {
                     const searchStart = Math.floor(beatBuffer.length * 0.25);
                     let maxAmp = 0;
@@ -440,8 +484,6 @@
                     }
                 }
             } else if (!isBeatMode) {
-                // 通常モードのトリガー（ゼロクロス検出）
-                // dataTimeは8192あるが、最初のほうでトリガーを探す
                 for(let i=1; i<2048; i++) { 
                     if(dataTime[i-1] < 128 && dataTime[i] >= 128) { startIndex = i; break; } 
                 }
@@ -450,14 +492,10 @@
             let targetScale = 1.0;
             if (autoScale) {
                 let maxPeak = 0; const step = isBeatMode ? 10 : 1; 
-                // 表示する範囲だけスキャンしてスケールを決める
-                const samplesToShow = isBeatMode ? (audioCtx.sampleRate * 1.0) : (audioCtx.sampleRate * 0.05); // 50ms分
+                const samplesToShow = isBeatMode ? (audioCtx.sampleRate * 1.0) : (audioCtx.sampleRate * 0.05);
                 const len = isSourceMode ? sourceSignalBuffer.length : samplesToShow;
                 const offset = isSourceMode ? 0 : startIndex;
-                
-                // バッファ範囲外エラー防止
                 const safeLen = Math.min(len, displayData.length - offset);
-
                 for(let i=0; i<safeLen; i+=step) { 
                     let p = Math.abs(displayData[offset + i] - 128); 
                     if(p > maxPeak) maxPeak = p; 
@@ -480,35 +518,28 @@
                 const samplesToDraw = audioCtx.sampleRate * 1.0; 
                 const samplesPerPixel = samplesToDraw / graphW;
                 tCtx.fillStyle = "var(--beat-color)";
-                
                 const dataOffset = isSourceMode ? 0 : startIndex;
                 const tops = [];
                 const bottoms = [];
-
                 for (let x = 0; x <= graphW; x += drawStep) {
                     const start = Math.floor(dataOffset + x * samplesPerPixel);
                     const end = Math.floor(dataOffset + (x + drawStep) * samplesPerPixel);
                     let minVal = 255, maxVal = 0;
-                    
                     if (start >= displayData.length) {
                         tops.push({x: mx + x, y: mt + graphH/2});
                         bottoms.push({x: mx + x, y: mt + graphH/2});
                         continue;
                     }
-
                     for (let j = start; j < end && j < displayData.length; j++) {
                         if (displayData[j] < minVal) minVal = displayData[j];
                         if (displayData[j] > maxVal) maxVal = displayData[j];
                     }
                     if (maxVal === 0 && minVal === 255) { maxVal = 128; minVal = 128; }
-
                     const yTop = mt + (graphH / 2) - ((maxVal - 128)/128 * currentTScale * (graphH / 2));
                     const yBottom = mt + (graphH / 2) - ((minVal - 128)/128 * currentTScale * (graphH / 2));
-                    
                     tops.push({x: mx + x, y: yTop});
                     bottoms.push({x: mx + x, y: yBottom});
                 }
-
                 tCtx.beginPath();
                 if(tops.length > 0) tCtx.moveTo(tops[0].x, tops[0].y);
                 for(let i=1; i<tops.length; i++) tCtx.lineTo(tops[i].x, tops[i].y);
@@ -518,20 +549,17 @@
 
                 const fBeat = Math.abs(beatFreq1 - beatFreq2);
                 const tBeat = (fBeat > 0.1) ? (1 / fBeat) * 1000 : 0; 
-
                 if (fBeat > 0.1) {
                     let peakTimeMs = 0;
                     let maxAmp = 0, peakIdx = 0;
                     const len = (isSourceMode) ? sourceSignalBuffer.length : (audioCtx.sampleRate * 1.0);
                     const offset = (isSourceMode) ? 0 : startIndex;
-
                     for(let i=0; i<len; i+=20) { 
                         if (displayData[offset + i] === undefined) break;
                         let val = Math.abs(displayData[offset + i] - 128);
                         if(val > maxAmp) { maxAmp = val; peakIdx = i; }
                     }
                     peakTimeMs = (peakIdx / len) * 1000;
-
                     if (config.showArea) {
                         let startX = mx + (peakTimeMs / 1000) * graphW;
                         let wPixels = (tBeat / 1000) * graphW;
@@ -539,7 +567,6 @@
                         if (startX + wPixels <= mx + graphW) { tCtx.fillRect(startX, mt, wPixels, graphH); } 
                         else { startX -= wPixels; if (startX >= mx) tCtx.fillRect(startX, mt, wPixels, graphH); }
                     }
-
                     if (config.showLines) {
                         tCtx.strokeStyle = "var(--beat-guide)"; tCtx.lineWidth = 1 * dpr;
                         tCtx.setLineDash([5, 5]); tCtx.beginPath();
@@ -556,27 +583,19 @@
                         tCtx.fillText(`T_beat=${tBeat.toFixed(0)}ms  f_beat=${fBeat.toFixed(1)}Hz`, mx, mt - 15*dpr);
                     }
                 }
-
             } else {
-                // 通常モード描画 (50ms分だけ描画して見やすくする)
                 const samples50ms = Math.floor(audioCtx.sampleRate * 0.05);
                 const slice = graphW / samples50ms;
-                
                 for (let i = 0; i < samples50ms; i++) {
-                    // バッファ範囲チェック
                     if (startIndex + i >= dataTime.length) break;
-                    
                     const x = mx + (i * slice); 
                     if (x > mx + graphW) break;
-                    
                     let norm = (dataTime[startIndex + i] - 128) / 128;
                     let y = mt + (graphH / 2) - (norm * currentTScale * (graphH / 2));
                     y = Math.max(mt, Math.min(mt + graphH, y)); 
-                    
                     if (i === 0) tCtx.moveTo(x, y); else tCtx.lineTo(x, y);
                 }
                 tCtx.stroke(); 
-
                 if (fundamental > 0) {
                     if (config.showArea) {
                         const periodPixels = (audioCtx.sampleRate / fundamental / samples50ms) * graphW;
@@ -584,16 +603,13 @@
                     }
                     if (config.showVal) {
                         tCtx.fillStyle = "#ffff00"; tCtx.textAlign = "left"; tCtx.font = `bold ${16 * dpr}px monospace`;
-                        tCtx.fillText(`T=${(1000/fundamental).toFixed(2)}ms  f=${Math.round(fundamental)}Hz`, mx, mt - 15*dpr);
+                        tCtx.fillText(`T=${(1000/fundamental).toFixed(2)}ms  f=${Math.round(fundamental)}Hz`, mx, mt - 10*dpr);
                     }
                 }
             }
         }
 
-        // --- スペクトル描画 ---
         if (getComputedStyle(wFreq).display !== 'none') {
-            
-            // 目盛り設定
             let step, subStep;
             switch(displayMaxHz) {
                 case 1000: step = 100; subStep = 10; break;
@@ -603,61 +619,64 @@
                 default: step = 2000; subStep = 500; break;
             }
 
-            // FFTサイズ8192固定なので、dataFreq.lengthは4096。
-            // 44100Hz / 8192 = 5.38Hz/bin
-            // 5000Hz表示なら、5000 / 5.38 ≈ 929 binまで表示すればよい
             const nyquist = audioCtx.sampleRate / 2;
             const indexRange = Math.floor((displayMaxHz / nyquist) * dataFreq.length);
             
-            const vLabels = autoScale ? [{val:0, text:"0%"}, {val:0.5, text:"50%"}, {val:1.0, text:"100%"}] : [{val:0, text:"0"}, {val:0.5, text:"0.5"}, {val:1.0, text:"1.0"}];
+            let vLabels = [];
+            if (config.unit === 'fs') {
+                vLabels = [{val:0, text:"-10dB"}, {val:0.5, text:"-50dB"}, {val:1.0, text:"-90dB"}];
+            } else {
+                vLabels = [{val:0, text:"90dB"}, {val:0.5, text:"50dB"}, {val:1.0, text:"10dB"}];
+            }
+
             const xSettings = { max: displayMaxHz, step: step, subStep: subStep, unit: "Hz" };
             const { mx, mt, graphW, graphH } = drawBase(fCtx, fCanvas, xSettings, vLabels);
             
-            let targetFScale = 1.0;
-            if (autoScale) {
-                let maxF = 0; for(let i=0; i<indexRange; i++) { if(dataFreq[i] > maxF) maxF = dataFreq[i]; }
-                if(maxF > 1) targetFScale = 245 / maxF;
-            }
-            currentFScale = currentFScale * 0.9 + targetFScale * 0.1;
-            if (autoScale) { fCtx.fillStyle = "#fd7e14"; fCtx.textAlign = "right"; fCtx.font = `${12 * dpr}px sans-serif`; fCtx.fillText(`Scale: ×${currentFScale.toFixed(1)}`, fCanvas.width - 10, mt - 10*dpr); }
-            
             const barWidth = graphW / indexRange;
-            // 描画高速化のため、barWidthが1px未満なら間引くか最大値を取る処理が必要だが
-            // 8192FFTで1000Hz表示ならindexRangeは約900、画面幅が300pxなら3bin/px程度。
-            // 逆に5000Hz表示なら4500bin、画面幅300pxなら15bin/px。
-            // fillRectは重いので、ピクセルごとに描画する
-            
-            fCtx.fillStyle = isFrozen ? "#ff4444" : "#00ff00"; // 色を少し変更
+            let peakVal = 0, peakIdx = 0;
             
             for (let x = 0; x < graphW; x++) {
                 const startIdx = Math.floor((x / graphW) * indexRange);
                 const endIdx = Math.floor(((x + 1) / graphW) * indexRange);
                 let maxVal = 0;
-                // ピクセルに対応するビンの中で最大値を探す
                 for(let j=startIdx; j<endIdx && j<dataFreq.length; j++){
                     if(dataFreq[j] > maxVal) maxVal = dataFreq[j];
+                    if(dataFreq[j] > peakVal) {
+                        peakVal = dataFreq[j];
+                        peakIdx = j;
+                    }
                 }
-                
-                // 色の決定 (レインボーカラー)
-                const hue = (startIdx / dataFreq.length) * 360 * 5; // 適当に色を散らす
+                const hue = (startIdx / dataFreq.length) * 360 * 5; 
                 fCtx.fillStyle = isFrozen ? "#ff4444" : `hsl(${120 - (x/graphW)*60}, 100%, 50%)`;
-
-                let val = (maxVal / 255) * graphH * currentFScale;
+                
+                let val = (maxVal / 255) * graphH;
                 if (val > graphH) val = graphH;
                 if (val > 0) {
-                    // 1px幅で描画
                     fCtx.fillRect(mx + x, mt + graphH - val, 1, val);
                 }
+            }
+
+            if (config.showVal && peakVal > 30) {
+                const peakHz = peakIdx * nyquist / dataFreq.length;
+                let peakText = "";
+                if (config.unit === 'fs') {
+                    const dbFS = -90 + (peakVal / 255) * 80;
+                    peakText = `Peak: ${peakHz.toFixed(1)}Hz (${dbFS.toFixed(1)} dBFS)`;
+                } else {
+                    const dbSPL = 10 + (peakVal / 255) * 80;
+                    peakText = `Peak: ${peakHz.toFixed(1)}Hz (${dbSPL.toFixed(0)} dB)`;
+                }
+                fCtx.fillStyle = "#ffff00";
+                fCtx.textAlign = "right"; 
+                fCtx.font = `bold ${16 * dpr}px monospace`;
+                fCtx.fillText(peakText, mx + graphW, mt - 15*dpr);
             }
 
             if (fundamental > 0 && !isBeatMode && config.showLines) {
                 for (let n = 1; n <= 5; n++) {
                     const f = fundamental * n; 
-                    // 画面外なら描画しない
                     if (f > displayMaxHz) continue;
-                    
                     const x = mx + (f / displayMaxHz) * graphW;
-                    
                     fCtx.strokeStyle = "#00ffff"; fCtx.lineWidth = (n===1)? 2*dpr : 1*dpr;
                     fCtx.beginPath(); fCtx.moveTo(x, mt); fCtx.lineTo(x, mt + graphH); fCtx.stroke();
                     fCtx.fillStyle = "#00ffff"; fCtx.textAlign = "center"; fCtx.font = `bold ${11 * dpr}px sans-serif`;
@@ -698,7 +717,7 @@
     }
 
     function devStop(){ 
-        if(osc1){ try{osc1.stop();}catch(e){} try{osc1.disconnect();}catch(e){} osc1=null; }
+        if(osc1){ try{osc1.stop();osc2.stop();}catch(e){} try{osc1.disconnect();}catch(e){} osc1=null; }
         if(osc2){ try{osc2.stop();}catch(e){} try{osc2.disconnect();}catch(e){} osc2=null; }
         if(gainNode){ try{gainNode.disconnect();}catch(e){} gainNode=null; }
         isPlayingDev = false;
